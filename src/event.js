@@ -185,17 +185,16 @@ jQuery.event = {
 			if ( !( handlers = events[ type ] ) ) {
 				handlers = events[ type ] = [];
 				handlers.delegateCount = 0;
-
-				// Only use addEventListener if the special events handler returns false
-				if ( !special.setup ||
-					special.setup.call( elem, data, namespaces, handleObj ) === false ) {
-
-					if ( elem.addEventListener ) {
-						elem.addEventListener( type, handleObj );
-					}
-				}
 			}
 
+			// Only use addEventListener if the special events handler returns false
+			if ( !special.setup ||
+				special.setup.call( elem, data, namespaces, handleObj ) === false ) {
+
+				if ( elem.addEventListener ) {
+					elem.addEventListener( type, handleObj );
+				}
+			}
 			if ( special.add ) {
 				special.add.call( elem, handleObj );
 
@@ -290,18 +289,21 @@ jQuery.event = {
 
 	dispatch: function( nativeEvent ) {
 
-		// Make a writable jQuery.Event from the native event object
-		var event = jQuery.event.fix( nativeEvent );
+		// Triggered event must either 1) have no namespace, or 2) have namespace(s)
+		// a subset or equal to those in the bound event (both can have no namespace).
+		if ( nativeEvent.rnamespace && !nativeEvent.rnamespace.test( this.namespace ) ) {
+			return;
+		}
 
 		var i, ret, match, matches,
 			args = new Array( arguments.length ),
 			handleObj = this,
 			elem = this.elem,
+			event = jQuery.event.fix( nativeEvent ),
 			special = jQuery.event.special[ event.type ] || {};
 
 		// Use the fix-ed jQuery.Event rather than the (read-only) native event
 		args[ 0 ] = event;
-
 		for ( i = 1; i < arguments.length; i++ ) {
 			args[ i ] = arguments[ i ];
 		}
@@ -313,29 +315,24 @@ jQuery.event = {
 			return;
 		}
 
-		// Determine elements this event should target
-		matches = jQuery.event.handlers.call( elem, event, handleObj );
+		// First handler on the events list runs delegated events before itself
+		matches = handleObj.selector ?
+			jQuery.event.handlers.call( elem, event, handleObj ) :
+			[ elem ];
 
-		// Run delegates first; they may want to stop propagation beneath us
 		i = 0;
 		while ( ( match = matches[ i++ ] ) && !event.isPropagationStopped() ) {
 			event.currentTarget = match;
+			event.handleObj = handleObj;
+			event.data = handleObj.data;
 
-			// Triggered event must either 1) have no namespace, or 2) have namespace(s)
-			// a subset or equal to those in the bound event (both can have no namespace).
-			if ( !event.rnamespace || event.rnamespace.test( handleObj.namespace ) ) {
+			ret = ( ( jQuery.event.special[ handleObj.origType ] || {} ).handle ||
+				handleObj.handler ).apply( match, args );
 
-				event.handleObj = handleObj;
-				event.data = handleObj.data;
-
-				ret = ( ( jQuery.event.special[ handleObj.origType ] || {} ).handle ||
-					handleObj.handler ).apply( match, args );
-
-				if ( ret !== undefined ) {
-					if ( ( event.result = ret ) === false ) {
-						event.preventDefault();
-						event.stopPropagation();
-					}
+			if ( ret !== undefined ) {
+				if ( ( event.result = ret ) === false ) {
+					event.preventDefault();
+					event.stopPropagation();
 				}
 			}
 		}
@@ -348,14 +345,13 @@ jQuery.event = {
 		return event.result;
 	},
 
+	// Find delegate handlers
 	handlers: function( event, handleObj ) {
 		var matches = [],
 			cur = event.target;
 
 		// Support: IE <=9
-		// Find delegate handlers
 		// Black-hole SVG <use> instance trees (#13180)
-		//
 		// Support: Firefox <=42
 		// Avoid non-left-click in FF but don't block IE radio events (#3861, gh-2343)
 		if ( handleObj.selector && cur.nodeType &&
@@ -373,11 +369,6 @@ jQuery.event = {
 					}
 				}
 			}
-		}
-
-		// Directly bound handlers
-		else {
-			matches.push( handleObj.elem );
 		}
 
 		return matches;
