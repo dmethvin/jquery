@@ -287,11 +287,11 @@ jQuery.event = {
 		}
 	},
 
-	dispatch: function( nativeEvent ) {
+	dispatch: function( event ) {
 
 		// Triggered event must either 1) have no namespace, or 2) have namespace(s)
 		// a subset or equal to those in the bound event (both can have no namespace).
-		if ( nativeEvent.rnamespace && !nativeEvent.rnamespace.test( this.namespace ) ) {
+		if ( event.rnamespace && !event.rnamespace.test( this.namespace ) ) {
 			return;
 		}
 
@@ -299,16 +299,18 @@ jQuery.event = {
 			args = new Array( arguments.length ),
 			handleObj = this,
 			elem = this.elem,
-			event = jQuery.event.fix( nativeEvent ),
+			stopped = event.isPropagationStopped || returnFalse,
 			special = jQuery.event.special[ event.type ] || {};
 
-		// Use the fix-ed jQuery.Event rather than the (read-only) native event
-		args[ 0 ] = event;
-		for ( i = 1; i < arguments.length; i++ ) {
+		// Copy args in an optimization-friendly loop
+		for ( i = 0; i < arguments.length; i++ ) {
 			args[ i ] = arguments[ i ];
 		}
 
 		event.delegateTarget = elem;
+		if ( !event.isDefaultPrevented ) {
+			event.isDefaultPrevented = function() { return this.defaultPrevented; };
+		}
 
 		// Call the preDispatch hook for the mapped type, and let it bail if desired
 		if ( special.preDispatch && special.preDispatch.call( elem, event ) === false ) {
@@ -321,10 +323,11 @@ jQuery.event = {
 			[ elem ];
 
 		i = 0;
-		while ( ( match = matches[ i++ ] ) && !event.isPropagationStopped() ) {
-			event.currentTarget = match;
+		while ( ( match = matches[ i++ ] ) && !stopped() ) {
 			event.handleObj = handleObj;
-			event.data = handleObj.data;
+
+			// Can't override a native data property
+			event.jqdata = handleObj.data;
 
 			ret = ( ( jQuery.event.special[ handleObj.origType ] || {} ).handle ||
 				handleObj.handler ).apply( match, args );
@@ -333,6 +336,12 @@ jQuery.event = {
 				if ( ( event.result = ret ) === false ) {
 					event.preventDefault();
 					event.stopPropagation();
+
+					// For delegated events, stop immediately to simulate propagation
+					if ( handleObj.selector ) {
+						event.stopImmediatePropagation();
+						break;
+					}
 				}
 			}
 		}
@@ -403,9 +412,7 @@ jQuery.event = {
 	},
 
 	fix: function( originalEvent ) {
-		return originalEvent[ jQuery.expando ] ?
-			originalEvent :
-			new jQuery.Event( originalEvent );
+		return originalEvent;
 	},
 
 	special: {

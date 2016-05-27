@@ -94,6 +94,7 @@ jQuery.extend( jQuery.event, {
 		i = 0;
 		while ( ( cur = eventPath[ i++ ] ) && !event.isPropagationStopped() ) {
 
+			event.currentTarget = cur;
 			event.type = i > 1 ?
 				bubbleType :
 				special.bindType || type;
