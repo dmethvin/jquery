@@ -308,9 +308,6 @@ jQuery.event = {
 		}
 
 		event.delegateTarget = elem;
-		if ( !event.isDefaultPrevented ) {
-			event.isDefaultPrevented = function() { return this.defaultPrevented; };
-		}
 
 		// Call the preDispatch hook for the mapped type, and let it bail if desired
 		if ( special.preDispatch && special.preDispatch.call( elem, event ) === false ) {
@@ -383,36 +380,34 @@ jQuery.event = {
 		return matches;
 	},
 
-	addProp: function( name, hook ) {
-		Object.defineProperty( jQuery.Event.prototype, name, {
-			enumerable: true,
-			configurable: true,
+	fix: function( event ) {
+		var button = event.button;
 
-			get: jQuery.isFunction( hook ) ?
-				function() {
-					if ( this.originalEvent ) {
-							return hook( this.originalEvent );
-					}
-				} :
-				function() {
-					if ( this.originalEvent ) {
-							return this.originalEvent[ name ];
-					}
-				},
+		// Native events don't all have this but jQuery standardized on it
+		if ( !event.isDefaultPrevented ) {
+			event.isDefaultPrevented = function() { return this.defaultPrevented; };
+		}
 
-			set: function( value ) {
-				Object.defineProperty( this, name, {
-					enumerable: true,
-					configurable: true,
-					writable: true,
-					value: value
-				} );
-			}
-		} );
-	},
+		// Support: Safari <=6 - 7 only
+		// Target should not be a text node (#504, #13143)
+		if ( event.target.nodeType === 3 ) {
 
-	fix: function( originalEvent ) {
-		return originalEvent;
+			//REGRESSION: can't change native event target
+			// event.target = event.target.parentNode;
+		}
+
+		// Add which for key events
+		if ( event.which == null && rkeyEvent.test( event.type ) ) {
+			event.which = event.charCode != null ? event.charCode : event.keyCode;
+		}
+
+		// Add which for click: 1 === left; 2 === middle; 3 === right
+		//POSSIBLE REGRESSION: if any supported browser returns which==0 we can't fix it
+		else if ( !event.which && button !== undefined && rmouseEvent.test( event.type ) ) {
+			event.which = ( button & 1 ? 1 : ( button & 2 ? 3 : ( button & 4 ? 2 : 0 ) ) );
+		}
+
+		return event;
 	},
 
 	special: {
@@ -492,21 +487,9 @@ jQuery.Event = function( src, props ) {
 
 		// Events bubbling up the document may have been marked as prevented
 		// by a handler lower down the tree; reflect the correct value.
-		this.isDefaultPrevented = src.defaultPrevented ||
-				src.defaultPrevented === undefined &&
+		this.defaultPrevented = src.defaultPrevented;
 
-				// Support: Android <=2.3 only
-				src.returnValue === false ?
-			returnTrue :
-			returnFalse;
-
-		// Create target properties
-		// Support: Safari <=6 - 7 only
-		// Target should not be a text node (#504, #13143)
-		this.target = ( src.target.nodeType === 3 ) ?
-			src.target.parentNode :
-			src.target;
-
+		this.target = src.target;
 		this.currentTarget = src.currentTarget;
 		this.relatedTarget = src.relatedTarget;
 
@@ -531,7 +514,8 @@ jQuery.Event = function( src, props ) {
 // https://www.w3.org/TR/2003/WD-DOM-Level-3-Events-20030331/ecma-script-binding.html
 jQuery.Event.prototype = {
 	constructor: jQuery.Event,
-	isDefaultPrevented: returnFalse,
+	defaultPrevented: false,
+	isDefaultPrevented: function() { return this.defaultPrevented; },
 	isPropagationStopped: returnFalse,
 	isImmediatePropagationStopped: returnFalse,
 	isSimulated: false,
@@ -539,7 +523,7 @@ jQuery.Event.prototype = {
 	preventDefault: function() {
 		var e = this.originalEvent;
 
-		this.isDefaultPrevented = returnTrue;
+		this.defaultPrevented = true;
 
 		if ( e && !this.isSimulated ) {
 			e.preventDefault();
@@ -566,53 +550,6 @@ jQuery.Event.prototype = {
 		this.stopPropagation();
 	}
 };
-
-// Includes all common event props including KeyEvent and MouseEvent specific props
-jQuery.each( {
-	altKey: true,
-	bubbles: true,
-	cancelable: true,
-	changedTouches: true,
-	ctrlKey: true,
-	detail: true,
-	eventPhase: true,
-	metaKey: true,
-	pageX: true,
-	pageY: true,
-	shiftKey: true,
-	view: true,
-	"char": true,
-	charCode: true,
-	key: true,
-	keyCode: true,
-	button: true,
-	buttons: true,
-	clientX: true,
-	clientY: true,
-	offsetX: true,
-	offsetY: true,
-	screenX: true,
-	screenY: true,
-	targetTouches: true,
-	toElement: true,
-	touches: true,
-
-	which: function( event ) {
-		var button = event.button;
-
-		// Add which for key events
-		if ( event.which == null && rkeyEvent.test( event.type ) ) {
-			return event.charCode != null ? event.charCode : event.keyCode;
-		}
-
-		// Add which for click: 1 === left; 2 === middle; 3 === right
-		if ( !event.which && button !== undefined && rmouseEvent.test( event.type ) ) {
-			return ( button & 1 ? 1 : ( button & 2 ? 3 : ( button & 4 ? 2 : 0 ) ) );
-		}
-
-		return event.which;
-	}
-}, jQuery.event.addProp );
 
 // Create mouseenter/leave events using mouseover/out and event-time checks
 // so that event delegation works in jQuery.
